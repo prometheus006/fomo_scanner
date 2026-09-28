@@ -28,6 +28,30 @@ def fetch_candidates():
     return candidates[: config.MAX_TOP_PAIR_CANDIDATES]
 
 
+def token_info(mints):
+    """mint -> {"symbol", "price_usd", "url"} (en likit Solana havuzundan). Bulunamayan atlanır."""
+    info = {}
+    mints = list(dict.fromkeys(mints))
+    for i in range(0, len(mints), 30):  # endpoint en fazla 30 adres alır
+        try:
+            resp = requests.get(config.DEXSCREENER_TOKENS_URL + ",".join(mints[i:i + 30]), timeout=15)
+            resp.raise_for_status()
+        except requests.RequestException:
+            continue
+        pairs = [p for p in resp.json().get("pairs") or [] if p.get("chainId") == config.CHAIN_ID]
+        pairs.sort(key=lambda p: (p.get("liquidity") or {}).get("usd") or 0, reverse=True)
+        for p in pairs:
+            mint = (p.get("baseToken") or {}).get("address")
+            if mint in info or mint not in mints:
+                continue
+            info[mint] = {
+                "symbol": p["baseToken"].get("symbol"),
+                "price_usd": float(p.get("priceUsd") or 0),
+                "url": p.get("url"),
+            }
+    return info
+
+
 def _passes_filters(pair) -> bool:
     liquidity_usd = (pair.get("liquidity") or {}).get("usd") or 0
     if liquidity_usd < config.MIN_LIQUIDITY_USD:

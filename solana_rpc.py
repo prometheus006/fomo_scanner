@@ -1,7 +1,7 @@
-"""Solana public RPC üzerinden mint authority kontrolü ve yüklü alım tespiti.
+"""Solana public RPC: mint authority kontrolü ve izlenen cüzdanların alımları.
 
 Ücretsiz public RPC kullanılır, key gerekmez. Ağır kullanım rate-limit yer,
-bu yüzden çağrılar arasında küçük bekleme var.
+bu yüzden çağrılar arasında küçük bekleme ve 429'da tekrar deneme var.
 """
 import time
 import requests
@@ -9,6 +9,13 @@ import requests
 import config
 
 _session = requests.Session()
+
+SOL_MINT = "So11111111111111111111111111111111111111112"
+QUOTE_MINTS = {
+    SOL_MINT: "SOL",
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC",
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": "USDT",
+}
 
 
 def _rpc(method, params, retries=4):
@@ -40,49 +47,60 @@ def authorities_are_renounced(mint_address: str) -> bool:
     return mint_ok and freeze_ok
 
 
-def find_whale_buys(pair_address: str, mint_address: str, price_usd: float):
-    """pair_address'teki son işlemlerde mint_address için yüklü alım arar.
+def parse_wallet_buys(tx, wallet: str):
+    """Tek işlemde cüzdanın aldığı tokenlar ve ödediği quote.
 
-    Dönen: [{"signature": str, "buyer": str, "usd": float}, ...]
+    Dönen: [{"mint": str, "amount": float, "paid": {"SOL": x, "USDC": y}}] (alım yoksa boş)
     """
-    if price_usd <= 0:
+    meta = tx.get("meta") or {}
+    if meta.get("err"):
         return []
 
-    sigs = _rpc("getSignaturesForAddress", [pair_address, {"limit": config.WHALE_LOOKBACK_TX}])
-    if not sigs:
-        return []
+    deltas = {}
+    for side, sign in (("preTokenBalances", -1), ("postTokenBalances", 1)):
+        for b in meta.get(side) or []:
+            if b.get("owner") != wallet:
+                continue
+            amt = (b.get("uiTokenAmount") or {}).get("uiAmount") or 0
+            deltas[b["mint"]] = deltas.get(b["mint"], 0) + sign * amt
 
-    whales = []
+    # Ödeme = cüzdandan azalan her şey (SOL/USDC/USDT ya da token->token takasında satılan token).
+    paid = {}
+    for mint, d in deltas.items():
+        if d < 0:
+            name = QUOTE_MINTS.get(mint, mint)
+            paid[name] = paid.get(name, 0) - d
+
+    keys = [k.get("pubkey") if isinstance(k, dict) else k
+            for k in ((tx.get("transaction") or {}).get("message") or {}).get("accountKeys") or []]
+    if wallet in keys:
+        i = keys.index(wallet)
+        lamports = (meta["postBalances"][i] - meta["preBalances"][i]) / 1e9
+        if lamports < -0.001:  # ücret tozunu alım sayma
+            paid["SOL"] = paid.get("SOL", 0) - lamports
+
+    if not paid:
+        return []  # karşılığında bir şey ödenmemiş giriş = airdrop/spam toz, alım değil
+    return [
+        {"mint": mint, "amount": d, "paid": paid}
+        for mint, d in deltas.items()
+        if d > 0 and mint not in QUOTE_MINTS
+    ]
+
+
+def wallet_buys(wallet: str, since_ts: float):
+    """since_ts'den sonra cüzdanın yaptığı alımlar (en yeniden eskiye)."""
+    sigs = _rpc("getSignaturesForAddress", [wallet, {"limit": config.WALLET_LOOKBACK_TX}]) or []
+    buys = []
     for entry in sigs:
-        sig = entry.get("signature")
-        if not sig or entry.get("err"):
+        if entry.get("err") or (entry.get("blockTime") or 0) <= since_ts:
             continue
-        time.sleep(0.15)  # public RPC rate-limit koruması
-        try:
-            tx = _rpc(
-                "getTransaction",
-                [sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}],
-            )
-        except requests.RequestException:
+        time.sleep(0.2)  # public RPC rate-limit koruması
+        tx = _rpc("getTransaction", [entry["signature"],
+                                     {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}])
+        if not tx:
             continue
-        if not tx or not tx.get("meta"):
-            continue
-
-        meta = tx["meta"]
-        pre = {b["accountIndex"]: b for b in meta.get("preTokenBalances", []) if b.get("mint") == mint_address}
-        post = {b["accountIndex"]: b for b in meta.get("postTokenBalances", []) if b.get("mint") == mint_address}
-
-        for idx, post_bal in post.items():
-            pre_amt = pre.get(idx, {}).get("uiTokenAmount", {}).get("uiAmount") or 0
-            post_amt = post_bal.get("uiTokenAmount", {}).get("uiAmount") or 0
-            delta = post_amt - pre_amt
-            if delta <= 0:
-                continue  # token azalan/pool tarafı, alıcı değil
-            usd_value = delta * price_usd
-            if usd_value >= config.MIN_WHALE_BUY_USD:
-                whales.append({
-                    "signature": sig,
-                    "buyer": post_bal.get("owner", "?"),
-                    "usd": usd_value,
-                })
-    return whales
+        for b in parse_wallet_buys(tx, wallet):
+            b.update(ts=entry["blockTime"], tx=entry["signature"])
+            buys.append(b)
+    return buys

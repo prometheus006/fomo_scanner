@@ -1,4 +1,4 @@
-"""seen.json ile dedupe — aynı token için DEDUPE_HOURS içinde ikinci mail atılmaz."""
+"""seen.json: havuz/cüzdan başına son bakılan zaman. Sadece bundan yeni işlemler bildirilir."""
 import json
 import os
 import time
@@ -18,15 +18,19 @@ def load():
 
 def save(seen: dict):
     with open(config.SEEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(seen, f, indent=2)
+        json.dump(seen, f, indent=2, sort_keys=True)
 
 
-def should_notify(seen: dict, pair_address: str) -> bool:
-    last_sent = seen.get(pair_address)
-    if last_sent is None:
-        return True
-    return (time.time() - last_sent) > config.DEDUPE_HOURS * 3600
+def since(seen: dict, key: str, first_lookback_hours: float) -> float:
+    """Bu anahtar için en son bakılan zaman; hiç bakılmadıysa şimdi - lookback."""
+    return seen.get(key, time.time() - first_lookback_hours * 3600)
 
 
-def mark_notified(seen: dict, pair_address: str):
-    seen[pair_address] = time.time()
+def mark(seen: dict, key: str, ts: float):
+    seen[key] = max(ts, seen.get(key, 0))
+
+
+def prune(seen: dict):
+    cutoff = time.time() - config.SEEN_PRUNE_HOURS * 3600
+    for key in [k for k, v in seen.items() if v < cutoff and not k.startswith("wallet:")]:
+        del seen[key]
