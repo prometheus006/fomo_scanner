@@ -5,9 +5,9 @@ from email.mime.text import MIMEText
 
 
 def send(subject: str, body: str):
-    address = os.environ["GMAIL_ADDRESS"]
-    app_password = os.environ["GMAIL_APP_PASSWORD"]
-    to_addr = os.environ.get("MAIL_TO", address)
+    address = os.environ["SMTP_USER"]
+    app_password = os.environ["SMTP_PASS"]
+    to_addr = os.environ.get("SMTP_TO") or address
 
     msg = MIMEText(body)
     msg["Subject"] = subject

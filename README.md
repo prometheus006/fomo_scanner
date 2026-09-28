@@ -25,10 +25,10 @@ Veri kaynakları tamamen ücretsiz: DexScreener public API + Solana public RPC.
 
 Repo ayarlarında **Settings → Secrets and variables → Actions** altına ekle:
 
-- `GMAIL_ADDRESS` — mail gönderen Gmail adresi
-- `GMAIL_APP_PASSWORD` — Gmail app password (normal şifre değil, Google
+- `SMTP_USER` — mail gönderen Gmail adresi
+- `SMTP_PASS` — Gmail app password (normal şifre değil, Google
   hesap ayarlarından "App Passwords" ile üretilir)
-- `MAIL_TO` — (opsiyonel) hedef adres, boşsa `GMAIL_ADDRESS`'e gider
+- `SMTP_TO` — (opsiyonel) hedef adres, boşsa `SMTP_USER`'e gider
 
 `Settings → Actions → General → Workflow permissions` altında "Read and
 write permissions" açık olmalı (workflow `seen.json`'ı geri commitliyor).
