@@ -11,15 +11,19 @@ import config
 _session = requests.Session()
 
 
-def _rpc(method, params):
-    resp = _session.post(
-        config.SOLANA_RPC_URL,
-        json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("result")
+def _rpc(method, params, retries=4):
+    for attempt in range(retries + 1):
+        resp = _session.post(
+            config.SOLANA_RPC_URL,
+            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+            timeout=15,
+        )
+        if resp.status_code == 429 and attempt < retries:
+            retry_after = resp.headers.get("Retry-After", "")
+            time.sleep(float(retry_after) if retry_after.isdigit() else 2 ** (attempt + 1))
+            continue
+        resp.raise_for_status()
+        return resp.json().get("result")
 
 
 def authorities_are_renounced(mint_address: str) -> bool:

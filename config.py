@@ -14,7 +14,7 @@ REQUIRE_FREEZE_AUTHORITY_NULL = True   # dev cüzdanlar donduramıyor olmalı
 
 # --- Yüklü alım (whale buy) tespiti ---
 MIN_WHALE_BUY_USD = 5_000         # tek işlemde bu tutarın üstü "yüklü alım" sayılır
-WHALE_LOOKBACK_TX = 30            # aday başına incelenecek son işlem sayısı
+WHALE_LOOKBACK_TX = 15           # aday başına incelenecek son işlem sayısı
 
 # --- Dedupe / mail ---
 DEDUPE_HOURS = 12                 # aynı token için bu süre içinde ikinci mail atılmaz
