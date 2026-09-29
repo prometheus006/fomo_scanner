@@ -4,6 +4,7 @@
    son bakıştan beri >= MIN_WHALE_BUY_USD alım var mı -> authority kontrolü -> tabloya.
 2. Cüzdanlar: WATCH_WALLETS'taki her adresin son bakıştan beri yaptığı alımlar -> tabloya.
 """
+import os
 import sys
 import time
 
@@ -114,27 +115,43 @@ def scan_wallets(seen):
     return rows
 
 
-def run():
-    seen = seen_store.load()
-    seen_store.prune(seen)
+def enable_test_mode():
+    """Elle tetiklenen test: gevşek filtre + 6 saat geriye bakış, mail her durumda gider."""
+    config.MIN_WHALE_WALLETS = 1
+    config.MIN_TOTAL_WHALE_BUY_USD = config.MIN_WHALE_BUY_USD
+    config.REQUIRE_NET_POSITIVE = False
+    config.FIRST_SEEN_LOOKBACK_HOURS = 6
+
+
+def run(test=False):
+    if test:
+        enable_test_mode()
+        seen = {}
+    else:
+        seen = seen_store.load()
+        seen_store.prune(seen)
     pools = scan_pools(seen)
     wallets = scan_wallets(seen)
     print(f"{len(pools)} token yüklü alım, {len(wallets)} izlenen cüzdan alımı.")
 
-    if pools or wallets:
+    if pools or wallets or test:
         subject = f"🐋 FOMO Tarama — {len(pools)} token yüklü alım"
         if wallets:
             subject += f", {len(wallets)} cüzdan alımı"
+        if test:
+            subject = "[TEST — gevşek filtre] " + subject
         mailer.send(subject, report.build_text(pools, wallets),
                     report.build_html(pools, wallets, config.MIN_WHALE_BUY_USD))
         print("Özet mail gönderildi.")
+    if test:
+        return  # test koşusu gerçek taramanın durumuna dokunmaz
     # Mail atılamazsa exception buraya gelmeden çıkar -> seen kaydedilmez -> sonraki koşu aynı işlemleri tekrar dener.
     seen_store.save(seen)
 
 
 if __name__ == "__main__":
     try:
-        run()
+        run(test=os.environ.get("TEST_MAIL") == "true")
     except Exception as exc:  # workflow log'unda görünsün diye
         print(f"HATA: {exc}", file=sys.stderr)
         raise

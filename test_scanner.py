@@ -147,6 +147,30 @@ def test_report_render():
     assert "TOK" in report.build_text([prow], wrows)
 
 
+def test_test_mode_mails_and_keeps_state():
+    import mailer
+    import scanner
+    saved = {k: getattr(config, k) for k in ("MIN_WHALE_WALLETS", "MIN_TOTAL_WHALE_BUY_USD",
+                                             "REQUIRE_NET_POSITIVE", "FIRST_SEEN_LOOKBACK_HOURS")}
+    sent, saves = [], []
+    orig = (scanner.scan_pools, scanner.scan_wallets, mailer.send, seen_store.save)
+    scanner.scan_pools = scanner.scan_wallets = lambda seen: []
+    mailer.send = lambda s, t, h=None: sent.append(s)
+    seen_store.save = lambda seen: saves.append(1)
+    try:
+        scanner.run(test=True)
+        assert len(sent) == 1 and sent[0].startswith("[TEST") and saves == []
+        sent.clear()
+        for k, v in saved.items():
+            setattr(config, k, v)
+        scanner.run(test=False)  # boş normal koşu: mail yok, durum kaydedilir
+        assert sent == [] and saves == [1]
+    finally:
+        scanner.scan_pools, scanner.scan_wallets, mailer.send, seen_store.save = orig
+        for k, v in saved.items():
+            setattr(config, k, v)
+
+
 if __name__ == "__main__":
     tests = [v for k, v in list(globals().items()) if k.startswith("test_")]
     for t in tests:

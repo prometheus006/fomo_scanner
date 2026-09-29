@@ -3,7 +3,12 @@ name: Scan
 on:
   schedule:
     - cron: "0 * * * *"   # saatlik
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Test maili (gevşek filtre, seen.json'a yazmaz)"
+        type: boolean
+        default: false
   repository_dispatch:
     types: [scan]
 
@@ -27,6 +32,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           SMTP_TO: ${{ secrets.SMTP_TO }}
+          TEST_MAIL: ${{ inputs.test }}
 
       - name: seen.json güncellemesini commitle
         run: |
