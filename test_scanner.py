@@ -113,6 +113,29 @@ def test_wallet_sell_is_not_buy():
     assert solana_rpc.parse_wallet_buys(_tx([(MEME, 1000)], [], (8_000_000_000, 10_000_000_000)), W) == []
 
 
+def test_wallet_buys_paginates_until_since():
+    # 120 imza (en yeni önce), ts 1000..881; since=900 -> ts>900 olan 100 imza incelenmeli, 3 sayfa istek
+    sigs = [{"signature": f"s{ts}", "blockTime": ts, "err": None} for ts in range(1000, 880, -1)]
+    calls, fetched = [], []
+
+    def fake_rpc(method, params, retries=4):
+        if method == "getSignaturesForAddress":
+            opts = params[1]
+            start = 0 if "before" not in opts else [s["signature"] for s in sigs].index(opts["before"]) + 1
+            calls.append(start)
+            return sigs[start:start + opts["limit"]]
+        fetched.append(params[0])
+        return None
+
+    orig, orig_sleep = solana_rpc._rpc, solana_rpc.time.sleep
+    solana_rpc._rpc, solana_rpc.time.sleep = fake_rpc, lambda s: None
+    try:
+        solana_rpc.wallet_buys(W, 900)
+    finally:
+        solana_rpc._rpc, solana_rpc.time.sleep = orig, orig_sleep
+    assert calls == [0, 50, 100] and len(fetched) == 100 and fetched[-1] == "s901"
+
+
 def test_rpc_retries_on_429():
     class Resp:
         def __init__(self, code):
@@ -131,6 +154,20 @@ def test_rpc_retries_on_429():
         solana_rpc._session.post = orig
 
 
+def test_wallet_cost_and_spam_filter():
+    import scanner
+    tokens = {MEME: {"symbol": "MEME", "price_usd": 0.005}, solana_rpc.SOL_MINT: {"price_usd": 120.0}}
+    b = lambda paid, amount=50_000: {"mint": MEME, "amount": amount, "paid": paid, "ts": 0, "tx": "x"}
+    # $250 USDC'lik alım, token sonradan 5x yapmış olsa da $250 görünür ve filtreden geçer
+    rows = scanner.wallet_rows("K", [b({"USDC": 250.0})], tokens)
+    assert len(rows) == 1 and rows[0]["usd"] == 250.0
+    # 0.001 SOL'luk (~$0.12) spam alım elenir
+    assert scanner.wallet_rows("K", [b({"SOL": 0.001}, amount=10)], tokens) == []
+    # başka token'la ödeme, fiyatı bilinmiyor -> güncel fiyattan tahmin (~), 50k*0.005=$250
+    rows = scanner.wallet_rows("K", [b({"OtherMint1111": 99.0})], tokens)
+    assert rows[0]["estimated"] and rows[0]["usd"] == 250.0
+
+
 def test_report_render():
     import report
     import scanner
@@ -140,8 +177,9 @@ def test_report_render():
     prow = scanner.pool_row(pair, trades, False)
     assert prow["wallets"] == 1 and prow["net"] == -3000.0
     buys = [{"mint": MEME, "amount": 10.0, "paid": {"SOL": 1.5}, "ts": 0, "tx": "x"}]
-    wrows = scanner.wallet_rows("K", buys, {MEME: {"symbol": "MEME", "price_usd": 2.0, "url": "u"}})
-    assert wrows[0]["usd"] == 20.0 and wrows[0]["paid"] == "1.5 SOL"
+    tokens = {MEME: {"symbol": "MEME", "price_usd": 2.0, "url": "u"}, solana_rpc.SOL_MINT: {"price_usd": 200.0}}
+    wrows = scanner.wallet_rows("K", buys, tokens)
+    assert wrows[0]["usd"] == 300.0 and not wrows[0]["estimated"] and wrows[0]["paid"] == "1.5 SOL"
     html = report.build_html([prow], wrows, 5000)
     assert "TOK" in html and "AÇIK" in html and "MEME" in html and "&lt;T&gt;" in html and "<T>" not in html
     assert "TOK" in report.build_text([prow], wrows)

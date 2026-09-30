@@ -27,8 +27,11 @@ WATCH_WALLETS = {
     # fomo.family/profile/CryptoKemal — Solana cüzdanı; USDC bakiyesi = profildeki "Total cash" (29 Eyl doğrulandı).
     # Profildeki EVM zinciri pozisyonları (BOW, NST vb.) bu adreste değil, izlenmiyor.
     "CryptoKemal": "Hpo766ufzaLce4FwvebarGDgFqMwnb2WKFkkUn7z3WLz",
+    # kolscan KOL "Schoen" — 30g: %52 kazanma, ort. 4 saat tutma, $164k gerçekleşen kâr, en büyük kazanç ~$19k (30 Eyl).
+    "Schoen": "5hAgYC8TJCcEZV7LTXAzkTrm7YL29YXyQQJPCNrG84zM",
 }
-WALLET_LOOKBACK_TX = 25           # cüzdan başına koşu başı incelenecek son işlem
+WALLET_MIN_BUY_USD = 100          # izlenen cüzdanda bundan küçük alım (ödenen tutar) spam sayılır, gösterilmez
+WALLET_MAX_TX_PER_RUN = 150       # cüzdan başına koşu başı en fazla bu kadar yeni işlem incelenir (spam dahil)
 WALLET_FIRST_RUN_HOURS = 24       # yeni eklenen cüzdanda bu kadar geriye bak
 
 # --- Durum ---

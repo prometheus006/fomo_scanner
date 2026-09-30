@@ -91,13 +91,14 @@ def build_html(pool_rows, wallet_rows, min_whale_usd, run_ts=None):
             time.strftime("%H:%M", time.gmtime(r["ts"])),
             f'<b style="color:{GREEN}">{_a(r["url"], r["symbol"], GREEN)}</b>',
             f"{r['amount']:,.4g}",
-            f'<b>{_usd(r["usd"])}</b>' if r["usd"] else f'<span style="color:{MUTED}">?</span>',
+            (f'<b>{"~" if r.get("estimated") else ""}{_usd(r["usd"])}</b>' if r["usd"]
+             else f'<span style="color:{MUTED}">?</span>'),
             escape(r["paid"]),
             _a(f"https://solscan.io/tx/{r['tx']}", "tx"),
         ] for r in wallet_rows]
         parts.append(_table(
             f"👤 İZLENEN CÜZDAN ALIMLARI ({len(wallet_rows)})", "#1f4f8a",
-            ["Cüzdan", "Saat", "Token", "Adet", "Değer*", "Ödenen", "İşlem"],
+            ["Cüzdan", "Saat", "Token", "Adet", "Tutar*", "Ödenen", "İşlem"],
             rows,
         ))
 
@@ -107,7 +108,8 @@ def build_html(pool_rows, wallet_rows, min_whale_usd, run_ts=None):
         f"<b>Kolon rehberi:</b> Cüzdan = son taramadan beri tek işlemde ≥{_usd(min_whale_usd)} alan farklı cüzdan sayısı | "
         "Alım/Satış = aynı dönemdeki yüklü işlemlerin toplamı | Net = alım − satış | "
         "Mint/Freeze = token yeni basılabilir/dondurulabilir mi (AÇIK = risk) | "
-        "*Değer = alınan adet × güncel fiyat.<br>"
+        "*Tutar = alım için ödenen USDC/SOL'un dolar karşılığı; başında ~ varsa ödeme başka bir token'la "
+        "yapılmış ve tutar güncel fiyattan tahmin edilmiştir.<br>"
         "Bu mail yalnızca filtreden geçen işlemleri listeler; alım önerisi değildir. "
         "Büyük alıcıların bir kısmı arbitraj/MEV botu olabilir.</div></div>"
     )

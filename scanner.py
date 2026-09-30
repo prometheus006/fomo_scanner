@@ -45,17 +45,34 @@ def pool_row(pair, trades, renounced):
     }
 
 
+def cost_usd(paid, tokens):
+    """Alım için ÖDENEN tutar ($). Güncel fiyattan tahmin değil: 5x yapmış tokende $250'lık alım $250 kalır."""
+    total = 0.0
+    for k, v in paid.items():
+        if k in ("USDC", "USDT"):
+            total += v
+        else:
+            mint = solana_rpc.SOL_MINT if k == "SOL" else k
+            total += v * tokens.get(mint, {}).get("price_usd", 0)
+    return total
+
+
 def wallet_rows(name, buys, tokens):
     rows = []
     for b in buys:
         t = tokens.get(b["mint"], {})
+        cost = cost_usd(b["paid"], tokens)
+        usd, estimated = (cost, False) if cost > 0 else (b["amount"] * t.get("price_usd", 0), True)
+        if usd and usd < config.WALLET_MIN_BUY_USD:
+            continue  # spam/toz alım
         rows.append({
             "name": name,
             "ts": b["ts"],
             "symbol": t.get("symbol") or _short(b["mint"]),
             "url": t.get("url") or f"https://dexscreener.com/solana/{b['mint']}",
             "amount": b["amount"],
-            "usd": b["amount"] * t.get("price_usd", 0),
+            "usd": usd,
+            "estimated": estimated,
             "paid": ", ".join(f"{v:,.4g} {_short(k)}" for k, v in b["paid"].items()),
             "tx": b["tx"],
         })
@@ -111,7 +128,9 @@ def scan_wallets(seen):
 
         seen_store.mark(seen, key, max((b["ts"] for b in buys), default=time.time() - SAFETY_SEC))
         if buys:
-            rows += wallet_rows(name, buys, dexscreener.token_info([b["mint"] for b in buys]))
+            mints = [b["mint"] for b in buys] + [solana_rpc.SOL_MINT]
+            mints += [k for b in buys for k in b["paid"] if k not in ("SOL", "USDC", "USDT")]
+            rows += wallet_rows(name, buys, dexscreener.token_info(mints))
     return rows
 
 

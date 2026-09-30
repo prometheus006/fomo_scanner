@@ -90,10 +90,23 @@ def parse_wallet_buys(tx, wallet: str):
 
 def wallet_buys(wallet: str, since_ts: float):
     """since_ts'den sonra cüzdanın yaptığı alımlar (en yeniden eskiye)."""
-    sigs = _rpc("getSignaturesForAddress", [wallet, {"limit": config.WALLET_LOOKBACK_TX}]) or []
+    # Tanınmış cüzdanlara saatte onlarca spam işlem gelir; sabit "son N" gerçek alımları kaçırır.
+    # O yüzden since_ts'e kadar sayfalayarak geri gidilir (tavan WALLET_MAX_TX_PER_RUN).
+    sigs, before = [], None
+    while len(sigs) < config.WALLET_MAX_TX_PER_RUN:
+        opts = {"limit": 50, **({"before": before} if before else {})}
+        page = _rpc("getSignaturesForAddress", [wallet, opts]) or []
+        new = [s for s in page if (s.get("blockTime") or 0) > since_ts]
+        sigs += new
+        if len(new) < len(page) or len(page) < 50:
+            break
+        before = page[-1]["signature"]
+    else:
+        print(f"UYARI {wallet[:6]}: {config.WALLET_MAX_TX_PER_RUN}+ yeni işlem, eskileri bu koşuda atlandı")
+
     buys = []
-    for entry in sigs:
-        if entry.get("err") or (entry.get("blockTime") or 0) <= since_ts:
+    for entry in sigs[: config.WALLET_MAX_TX_PER_RUN]:
+        if entry.get("err"):
             continue
         time.sleep(0.2)  # public RPC rate-limit koruması
         tx = _rpc("getTransaction", [entry["signature"],
