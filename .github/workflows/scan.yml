@@ -13,13 +13,26 @@ on:
     types: [scan]
 
 permissions:
-  contents: write
+  contents: read
+
+# İki koşu aynı anda aynı durumu okuyup aynı işlemleri iki kez mail atmasın.
+concurrency:
+  group: scan
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # seen.json repoya commit'lenmez (yerel push çakışması olmasın diye), Actions önbelleğinde durur.
+      # Önbellek boşsa repodaki seen.json başlangıç değeri olarak kullanılır.
+      - uses: actions/cache/restore@v4
+        with:
+          path: seen.json
+          key: seen-${{ github.run_id }}
+          restore-keys: seen-
 
       - uses: actions/setup-python@v5
         with:
@@ -34,10 +47,8 @@ jobs:
           SMTP_TO: ${{ secrets.SMTP_TO }}
           TEST_MAIL: ${{ inputs.test }}
 
-      - name: seen.json güncellemesini commitle
-        run: |
-          git config user.name "fomo_scanner bot"
-          git config user.email "actions@github.com"
-          git add seen.json
-          git diff --staged --quiet || git commit -m "dedupe: seen.json güncelle"
-          git push
+      - if: ${{ inputs.test != true }}
+        uses: actions/cache/save@v4
+        with:
+          path: seen.json
+          key: seen-${{ github.run_id }}

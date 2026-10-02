@@ -30,8 +30,10 @@ Repo ayarlarında **Settings → Secrets and variables → Actions** altına ekl
   hesap ayarlarından "App Passwords" ile üretilir)
 - `SMTP_TO` — (opsiyonel) hedef adres, boşsa `SMTP_USER`'e gider
 
-`Settings → Actions → General → Workflow permissions` altında "Read and
-write permissions" açık olmalı (workflow `seen.json`'ı geri commitliyor).
+Durum dosyası `seen.json` repoya commit'lenmez, GitHub Actions önbelleğinde
+(cache) tutulur; repodaki kopya yalnızca önbellek boşsa başlangıç değeridir.
+Önbellek 7 gün kullanılmazsa GitHub siler — o zaman bir sonraki koşu repodaki
+eski kopyayla başlar (birkaç tekrar bildirim olabilir).
 
 ## Sınırlamalar (bilinçli basitleştirmeler)
 
